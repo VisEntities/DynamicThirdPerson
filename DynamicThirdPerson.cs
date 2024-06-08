@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace Oxide.Plugins
 {
     [Info("Dynamic Third Person", "VisEntities", "1.0.0")]
-    [Description("Toggle between first-person and third-person views while aiming with a weapon.")]
+    [Description("Allows players to switch between first-person and third-person perspectives.")]
     public class DynamicThirdPerson : RustPlugin
     {
         #region Fields
