@@ -3,8 +3,8 @@ using System.Collections.Generic;
 
 namespace Oxide.Plugins
 {
-    [Info("Dynamic Third Person", "VisEntities", "1.0.0")]
-    [Description("Allows players to switch between first-person and third-person perspectives.")]
+    [Info("Dynamic Third Person", "VisEntities", "1.1.0")]
+    [Description("Automatically puts players in 3d person when performing certain actions.")]
     public class DynamicThirdPerson : RustPlugin
     {
         #region Fields
@@ -21,14 +21,23 @@ namespace Oxide.Plugins
             [JsonProperty("Version")]
             public string Version { get; set; }
 
-            [JsonProperty("Camera Offset")]
-            public string CameraOffset { get; set; }
+            [JsonProperty("Toggle Third Person Only When Mounting Vehicles")]
+            public bool ToggleThirdPersonOnlyWhenMountingVehicles { get; set; }
 
-            [JsonProperty("Camera Field Of View")]
-            public string CameraFieldOfView { get; set; }
+            [JsonProperty("Camera")]
+            public CameraConfig Camera { get; set; }
+        }
 
-            [JsonProperty("Camera Distance")]
-            public string CameraDistance { get; set; }
+        private class CameraConfig
+        {
+            [JsonProperty("Offset")]
+            public string Offset { get; set; }
+
+            [JsonProperty("Field Of View")]
+            public string FieldOfView { get; set; }
+
+            [JsonProperty("Distance")]
+            public string Distance { get; set; }
         }
 
         protected override void LoadConfig()
@@ -61,6 +70,12 @@ namespace Oxide.Plugins
             if (string.Compare(_config.Version, "1.0.0") < 0)
                 _config = defaultConfig;
 
+            if (string.Compare(_config.Version, "1.1.0") < 0)
+            {
+                _config.ToggleThirdPersonOnlyWhenMountingVehicles = defaultConfig.ToggleThirdPersonOnlyWhenMountingVehicles;
+                _config.Camera = defaultConfig.Camera;
+            }
+
             PrintWarning("Config update complete! Updated from version " + _config.Version + " to " + Version.ToString());
             _config.Version = Version.ToString();
         }
@@ -70,9 +85,13 @@ namespace Oxide.Plugins
             return new Configuration
             {
                 Version = Version.ToString(),
-                CameraOffset = "0.0, 1.0, 0.0",
-                CameraFieldOfView = "106.1227",
-                CameraDistance = "2"
+                ToggleThirdPersonOnlyWhenMountingVehicles = false,
+                Camera = new CameraConfig
+                {
+                    Offset = "0.0, 1.0, 0.0",
+                    FieldOfView = "106.1227",
+                    Distance = "2"
+                }
             };
         }
 
@@ -84,13 +103,21 @@ namespace Oxide.Plugins
         {
             _plugin = this;
             PermissionUtil.RegisterPermissions();
-        }
 
+            if (_config.ToggleThirdPersonOnlyWhenMountingVehicles)
+                Unsubscribe(nameof(OnPlayerInput));
+            else
+            {
+                Unsubscribe(nameof(OnEntityMounted));
+                Unsubscribe(nameof(OnEntityDismounted));
+            }
+        }
+        
         private void Unload()
         {
             foreach (BasePlayer player in BasePlayer.activePlayerList)
             {
-                if (player != null)
+                if (player != null && !player.HasPlayerFlag(BasePlayer.PlayerFlags.IsAdmin))
                     ToggleThirdPerson(player, false);
             }
 
@@ -116,6 +143,36 @@ namespace Oxide.Plugins
             }
         }
 
+        private void OnEntityMounted(BaseMountable mountable, BasePlayer player)
+        {
+            if (player == null || !PermissionUtil.HasPermission(player, PermissionUtil.USE))
+                return;
+
+            if (player.HasPlayerFlag(BasePlayer.PlayerFlags.IsAdmin))
+                return;
+
+            BaseVehicle vehicle = mountable.GetParentEntity() as BaseVehicle;
+            if (vehicle == null)
+                return;
+
+            ToggleThirdPerson(player, true);
+        }
+
+        private void OnEntityDismounted(BaseMountable mountable, BasePlayer player)
+        {
+            if (player == null || !PermissionUtil.HasPermission(player, PermissionUtil.USE))
+                return;
+
+            if (player.HasPlayerFlag(BasePlayer.PlayerFlags.IsAdmin))
+                return;
+
+            BaseVehicle vehicle = mountable.GetParentEntity() as BaseVehicle;
+            if (vehicle == null)
+                return;
+
+            ToggleThirdPerson(player, false);
+        }
+
         #endregion Oxide Hooks
 
         # region Third Person Toggle
@@ -128,9 +185,9 @@ namespace Oxide.Plugins
             player.SetPlayerFlag(BasePlayer.PlayerFlags.ThirdPersonViewmode, enable);
             if (enable)
             {
-                player.Command("camoffset", _config.CameraOffset);
-                player.Command("camfov", _config.CameraFieldOfView);
-                player.Command("camdist", _config.CameraDistance);
+                player.Command("camoffset", _config.Camera.Offset);
+                player.Command("camfov", _config.Camera.FieldOfView);
+                player.Command("camdist", _config.Camera.Distance);
             }
 
             player.SetPlayerFlag(BasePlayer.PlayerFlags.IsAdmin, false);
