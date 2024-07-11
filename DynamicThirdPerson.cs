@@ -5,11 +5,12 @@
  */
 
 using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
 using System.Collections.Generic;
 
 namespace Oxide.Plugins
 {
-    [Info("Dynamic Third Person", "VisEntities", "1.2.0")]
+    [Info("Dynamic Third Person", "VisEntities", "1.3.0")]
     [Description("Automatically puts players in 3d person when performing certain actions.")]
     public class DynamicThirdPerson : RustPlugin
     {
@@ -27,8 +28,9 @@ namespace Oxide.Plugins
             [JsonProperty("Version")]
             public string Version { get; set; }
 
-            [JsonProperty("Toggle Third Person Only When Mounting Vehicles")]
-            public bool ToggleThirdPersonOnlyWhenMountingVehicles { get; set; }
+            [JsonProperty("Third Person Mode")]
+            [JsonConverter(typeof(StringEnumConverter))]
+            public ThirdPersonMode ThirdPersonMode { get; set; }
 
             [JsonProperty("Vehicle Short Prefab Names")]
             public List<string> VehicleShortPrefabNames { get; set; }
@@ -84,7 +86,6 @@ namespace Oxide.Plugins
 
             if (string.Compare(_config.Version, "1.1.0") < 0)
             {
-                _config.ToggleThirdPersonOnlyWhenMountingVehicles = defaultConfig.ToggleThirdPersonOnlyWhenMountingVehicles;
                 _config.Camera = defaultConfig.Camera;
             }
 
@@ -92,6 +93,11 @@ namespace Oxide.Plugins
             {
                 _config.VehicleShortPrefabNames = defaultConfig.VehicleShortPrefabNames;
                 _config.ChatCommandToToggleThirdPerson = defaultConfig.ChatCommandToToggleThirdPerson;
+            }
+
+            if (string.Compare(_config.Version, "1.3.0") < 0)
+            {
+                _config.ThirdPersonMode = defaultConfig.ThirdPersonMode;
             }
 
             PrintWarning("Config update complete! Updated from version " + _config.Version + " to " + Version.ToString());
@@ -103,7 +109,7 @@ namespace Oxide.Plugins
             return new Configuration
             {
                 Version = Version.ToString(),
-                ToggleThirdPersonOnlyWhenMountingVehicles = false,
+                ThirdPersonMode = ThirdPersonMode.AlwaysThirdPerson,
                 VehicleShortPrefabNames = new List<string>
                 {
                     "1module_cockpit",
@@ -135,12 +141,26 @@ namespace Oxide.Plugins
             PermissionUtil.RegisterPermissions();
             cmd.AddChatCommand(_config.ChatCommandToToggleThirdPerson, this, nameof(cmdToggleThirdPerson));
 
-            if (_config.ToggleThirdPersonOnlyWhenMountingVehicles)
-                Unsubscribe(nameof(OnPlayerInput));
-            else
+            switch (_config.ThirdPersonMode)
             {
-                Unsubscribe(nameof(OnEntityMounted));
-                Unsubscribe(nameof(OnEntityDismounted));
+                case ThirdPersonMode.AlwaysThirdPerson:
+                    {
+                        Unsubscribe(nameof(OnEntityMounted));
+                        Unsubscribe(nameof(OnEntityDismounted));
+                        break;
+                    }
+                case ThirdPersonMode.VehicleOnly:
+                    {
+                        Unsubscribe(nameof(OnPlayerInput));
+                        break;
+                    }
+                case ThirdPersonMode.CommandOnly:
+                    {
+                        Unsubscribe(nameof(OnPlayerInput));
+                        Unsubscribe(nameof(OnEntityMounted));
+                        Unsubscribe(nameof(OnEntityDismounted));
+                        break;
+                    }
             }
         }
         
@@ -206,7 +226,18 @@ namespace Oxide.Plugins
 
         #endregion Oxide Hooks
 
-        # region Third Person Toggle
+        #region Third Person Mode
+
+        public enum ThirdPersonMode
+        {
+            AlwaysThirdPerson,
+            VehicleOnly,
+            CommandOnly
+        }
+
+        #endregion Third Person Mode
+
+        #region Third Person Toggle
 
         private void ToggleThirdPerson(BasePlayer player, bool enable)
         {
@@ -263,6 +294,12 @@ namespace Oxide.Plugins
                 return;
             }
 
+            if (_config.ThirdPersonMode != ThirdPersonMode.CommandOnly)
+            {
+                SendMessage(player, Lang.ThirdPersonCommandDisabled);
+                return;
+            }
+
             if (args.Length > 0)
             {
                 SendMessage(player, Lang.CommandSyntaxError, "/" + _config.ChatCommandToToggleThirdPerson);
@@ -297,6 +334,7 @@ namespace Oxide.Plugins
             public const string ToggleSuccess = "ToggleSuccess";
             public const string AdminToggleDenied = "AdminToggleDenied";
             public const string CommandSyntaxError = "CommandSyntaxError";
+            public const string ThirdPersonCommandDisabled = "ThirdPersonCommandDisabled";
         }
 
         protected override void LoadDefaultMessages()
@@ -306,7 +344,8 @@ namespace Oxide.Plugins
                 [Lang.NoPermission] = "You do not have permission to use this command.",
                 [Lang.ToggleSuccess] = "You have switched to {0} view.",
                 [Lang.AdminToggleDenied] = "You cannot use this command as an admin.",
-                [Lang.CommandSyntaxError] = "Syntax error. Correct usage: {0}."
+                [Lang.CommandSyntaxError] = "Syntax error. Correct usage: {0}.",
+                [Lang.ThirdPersonCommandDisabled] = "You cannot use this command in the current mode."
             }, this, "en");
         }
 
