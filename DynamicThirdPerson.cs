@@ -10,7 +10,7 @@ using System.Collections.Generic;
 
 namespace Oxide.Plugins
 {
-    [Info("Dynamic Third Person", "VisEntities", "1.3.0")]
+    [Info("Dynamic Third Person", "VisEntities", "1.4.0")]
     [Description("Automatically puts players in 3d person when performing certain actions.")]
     public class DynamicThirdPerson : RustPlugin
     {
@@ -32,14 +32,14 @@ namespace Oxide.Plugins
             [JsonConverter(typeof(StringEnumConverter))]
             public ThirdPersonMode ThirdPersonMode { get; set; }
 
-            [JsonProperty("Vehicle Short Prefab Names")]
-            public List<string> VehicleShortPrefabNames { get; set; }
-
             [JsonProperty("Chat Command To Toggle Third Person")]
             public string ChatCommandToToggleThirdPerson { get; set; }
 
-            [JsonProperty("Camera")]
-            public CameraConfig Camera { get; set; }
+            [JsonProperty("Default Camera")]
+            public CameraConfig DefaultCamera { get; set; }
+
+            [JsonProperty("Vehicle Short Prefab Names")]
+            public Dictionary<string, CameraConfig> VehicleShortPrefabNames { get; set; }
         }
 
         private class CameraConfig
@@ -86,7 +86,7 @@ namespace Oxide.Plugins
 
             if (string.Compare(_config.Version, "1.1.0") < 0)
             {
-                _config.Camera = defaultConfig.Camera;
+                _config.DefaultCamera = defaultConfig.DefaultCamera;
             }
 
             if (string.Compare(_config.Version, "1.2.0") < 0)
@@ -100,6 +100,11 @@ namespace Oxide.Plugins
                 _config.ThirdPersonMode = defaultConfig.ThirdPersonMode;
             }
 
+            if (string.Compare(_config.Version, "1.4.0") < 0)
+            {
+                _config.DefaultCamera = defaultConfig.DefaultCamera;
+            }
+
             PrintWarning("Config update complete! Updated from version " + _config.Version + " to " + Version.ToString());
             _config.Version = Version.ToString();
         }
@@ -110,23 +115,79 @@ namespace Oxide.Plugins
             {
                 Version = Version.ToString(),
                 ThirdPersonMode = ThirdPersonMode.AlwaysThirdPerson,
-                VehicleShortPrefabNames = new List<string>
-                {
-                    "1module_cockpit",
-                    "1module_cockpit_armored",
-                    "1module_cockpit_with_engine",
-                    "motorbike",
-                    "motorbike_sidecar",
-                    "pedalbike",
-                    "rhib",
-                    "rowboat"
-                },
                 ChatCommandToToggleThirdPerson = "3rd",
-                Camera = new CameraConfig
+                DefaultCamera = new CameraConfig
                 {
                     Offset = "0.0, 1.0, 0.0",
                     FieldOfView = "106.1227",
                     Distance = "2"
+                },
+                VehicleShortPrefabNames = new Dictionary<string, CameraConfig>
+                {
+                    {
+                        "1module_cockpit", new CameraConfig
+                        {
+                            Offset = "0.0, 1.0, 0.0",
+                            FieldOfView = "106.1227",
+                            Distance = "2"
+                        }
+                    },
+                    {
+                        "1module_cockpit_armored", new CameraConfig
+                        {
+                            Offset = "0.0, 1.0, 0.0",
+                            FieldOfView = "106.1227",
+                            Distance = "2"
+                        }
+                    },
+                    {
+                        "1module_cockpit_with_engine", new CameraConfig
+                        {
+                            Offset = "0.0, 1.0, 0.0",
+                            FieldOfView = "106.1227",
+                            Distance = "2"
+                        }
+                    },
+                    {
+                        "motorbike", new CameraConfig
+                        {
+                            Offset = "0.0, 1.0, 0.0",
+                            FieldOfView = "106.1227",
+                            Distance = "2"
+                        }
+                    },
+                    {
+                        "motorbike_sidecar", new CameraConfig
+                        {
+                            Offset = "0.0, 1.0, 0.0",
+                            FieldOfView = "106.1227",
+                            Distance = "2"
+                        }
+                    },
+                    {
+                        "pedalbike", new CameraConfig
+                        {
+                            Offset = "0.0, 1.0, 0.0",
+                            FieldOfView = "106.1227",
+                            Distance = "2"
+                        }
+                    },
+                    {
+                        "rhib", new CameraConfig
+                        {
+                            Offset = "0.0, 1.0, 0.0",
+                            FieldOfView = "106.1227",
+                            Distance = "2"
+                        }
+                    },
+                    {
+                        "rowboat", new CameraConfig
+                        {
+                            Offset = "0.0, 1.0, 0.0",
+                            FieldOfView = "106.1227",
+                            Distance = "2"
+                        }
+                    },
                 }
             };
         }
@@ -203,10 +264,18 @@ namespace Oxide.Plugins
                 return;
 
             BaseVehicle vehicle = mountable.GetParentEntity() as BaseVehicle;
-            if (vehicle == null || !_config.VehicleShortPrefabNames.Contains(vehicle.ShortPrefabName))
+            if (vehicle == null)
                 return;
 
-            ToggleThirdPerson(player, true);
+            CameraConfig camConfig;
+            if (_config.VehicleShortPrefabNames.TryGetValue(vehicle.ShortPrefabName, out camConfig))
+            {
+                ToggleThirdPerson(player, true, camConfig);
+            }
+            else
+            {
+                ToggleThirdPerson(player, true, _config.DefaultCamera);
+            }
         }
 
         private void OnEntityDismounted(BaseMountable mountable, BasePlayer player)
@@ -218,7 +287,7 @@ namespace Oxide.Plugins
                 return;
 
             BaseVehicle vehicle = mountable.GetParentEntity() as BaseVehicle;
-            if (vehicle == null || !_config.VehicleShortPrefabNames.Contains(vehicle.ShortPrefabName))
+            if (vehicle == null || !_config.VehicleShortPrefabNames.ContainsKey(vehicle.ShortPrefabName))
                 return;
 
             ToggleThirdPerson(player, false);
@@ -239,21 +308,33 @@ namespace Oxide.Plugins
 
         #region Third Person Toggle
 
-        private void ToggleThirdPerson(BasePlayer player, bool enable)
+        private void ToggleThirdPerson(BasePlayer player, bool enable, CameraConfig camConfig = null)
         {
-            player.SetPlayerFlag(BasePlayer.PlayerFlags.IsAdmin, true);
-            player.SendNetworkUpdateImmediate();
-
-            player.SetPlayerFlag(BasePlayer.PlayerFlags.ThirdPersonViewmode, enable);
-            if (enable)
+            bool wasAdmin = player.IsAdmin;
+            try
             {
-                player.Command("camoffset", _config.Camera.Offset);
-                player.Command("camfov", _config.Camera.FieldOfView);
-                player.Command("camdist", _config.Camera.Distance);
-            }
+                if (!wasAdmin)
+                {
+                    player.SetPlayerFlag(BasePlayer.PlayerFlags.IsAdmin, true);
+                    player.SendNetworkUpdateImmediate();
+                }
 
-            player.SetPlayerFlag(BasePlayer.PlayerFlags.IsAdmin, false);
-            player.SendNetworkUpdateImmediate();
+                player.SetPlayerFlag(BasePlayer.PlayerFlags.ThirdPersonViewmode, enable);
+                if (enable && camConfig != null)
+                {
+                    player.Command("camoffset", camConfig.Offset);
+                    player.Command("camfov", camConfig.FieldOfView);
+                    player.Command("camdist", camConfig.Distance);
+                }
+            }
+            finally
+            {
+                if (!wasAdmin)
+                {
+                    player.SetPlayerFlag(BasePlayer.PlayerFlags.IsAdmin, false);
+                    player.SendNetworkUpdateImmediate();
+                }
+            }
         }
 
         #endregion Third Person Toggle
