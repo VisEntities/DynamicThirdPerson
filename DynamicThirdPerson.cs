@@ -10,7 +10,7 @@ using System.Collections.Generic;
 
 namespace Oxide.Plugins
 {
-    [Info("Dynamic Third Person", "VisEntities", "1.4.0")]
+    [Info("Dynamic Third Person", "VisEntities", "1.4.1")]
     [Description("Automatically puts players in 3d person when performing certain actions.")]
     public class DynamicThirdPerson : RustPlugin
     {
@@ -268,14 +268,10 @@ namespace Oxide.Plugins
                 return;
 
             CameraConfig camConfig;
-            if (_config.VehicleShortPrefabNames.TryGetValue(vehicle.ShortPrefabName, out camConfig))
-            {
-                ToggleThirdPerson(player, true, camConfig);
-            }
-            else
-            {
-                ToggleThirdPerson(player, true, _config.DefaultCamera);
-            }
+            if (!_config.VehicleShortPrefabNames.TryGetValue(vehicle.ShortPrefabName, out camConfig))
+                return;
+            
+            ToggleThirdPerson(player, true, camConfig);
         }
 
         private void OnEntityDismounted(BaseMountable mountable, BasePlayer player)
